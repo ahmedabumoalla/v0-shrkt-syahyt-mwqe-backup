@@ -1,40 +1,48 @@
-import { NextResponse } from "next/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+import { NextResponse } from "next/server";
+import { sendMessageToJado } from "@/services/gemini";
 
 export async function POST(req: Request) {
   try {
-    // تحقق من وجود المفتاح
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: "AI service not configured" },
-        { status: 500 }
-      )
-    }
+    const body = await req.json();
 
-    // قراءة الطلب
-    const body = await req.json().catch(() => null)
+    const {
+      message,
+      imageBase64,
+      context,
+    }: {
+      message: string;
+      imageBase64?: string;
+      context?: {
+        type: "location" | "accessibility" | "historical_entry";
+        data: string;
+      };
+    } = body;
 
-    if (!body || typeof body.prompt !== "string" || !body.prompt.trim()) {
+    if (!message || typeof message !== "string") {
       return NextResponse.json(
-        { error: "Invalid prompt" },
+        { error: "Message is required" },
         { status: 400 }
-      )
+      );
     }
 
-    // تهيئة Gemini
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+    const result = await sendMessageToJado(
+      message,
+      imageBase64,
+      context
+    );
 
-    // توليد المحتوى
-    const result = await model.generateContent(body.prompt)
-    const text = result.response.text()
-
-    return NextResponse.json({ text })
+    return NextResponse.json({
+      success: true,
+      text: result.text,
+      itinerary: result.itinerary ?? null,
+      proposal: result.proposal ?? null,
+      groundingChunks: result.groundingChunks ?? null,
+    });
   } catch (error) {
-    console.error("AI API error:", error)
+    console.error("AI Route Error:", error);
     return NextResponse.json(
-      { error: "Failed to generate response" },
+      { success: false, error: "AI processing failed" },
       { status: 500 }
-    )
+    );
   }
 }
